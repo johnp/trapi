@@ -30,14 +30,18 @@ This plugin implements dynamic health checking. It will always return healthy th
 The API is not yet specified and for now is just a POST with a request body parsable by github.com/miekg/dns:NewRR.
 
 
+## Syntax
+
+[TODO] detailing syntax and supported directives.
+
 ## Examples
 
 In this configuration, we are able to insert transient resource records without authentication
-via the API, accessible via HTTP at 127.0.0.1:53080, and forward all other queries to 1.0.0.1.
+through the API, accessible via HTTP at 127.0.0.1:53080, and forward all other queries to 1.1.1.1.
 
 ``` corefile
 . {
-  trapi 127.1:53080
-  forward . 1.1
+  trapi 127.0.0.1:53080
+  forward . 1.1.1.1
 }
 ```

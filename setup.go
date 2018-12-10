@@ -6,8 +6,8 @@ import (
 	"github.com/coredns/coredns/plugin/metrics"
 	"github.com/mholt/caddy"
 	"github.com/miekg/dns"
-	"io/ioutil"
 	"net/http"
+	"time"
 )
 
 // TODO: design a proper API (json?)
@@ -19,15 +19,16 @@ import (
 func init() {
 	caddy.RegisterPlugin("trapi", caddy.Plugin{
 		ServerType: "dns",
-		Action:     setup,
+		Action:     setupTrapi,
 	})
 }
 
-var transientResourceRecords = make(map[string][]dns.RR)
+// TODO: make communication with plugin thread-safe
+var transientResourceRecords = make(map[string][]TransientResourceRecord)
 
 // setup is the function that gets called when the config parser see the token "trap". Setup is responsible
 // for parsing any extra options the trapi plugin may have. The first token this function sees is "trapi".
-func setup(c *caddy.Controller) error {
+func setupTrapi(c *caddy.Controller) error {
 	c.Next() // Ignore "trapi" and give us the next token.
 
 	// parse plugin settings
@@ -36,14 +37,17 @@ func setup(c *caddy.Controller) error {
 		return plugin.Error("trapi", c.ArgErr())
 	}
 	// try to start HTTP API server with listen address and port
-	http.HandleFunc("/trapi", serveAPI)
-	err := http.ListenAndServe(c.Val(), nil)
+	log.Info("setting up trapi http handler")
+	listen := c.Val()
+	log.Infof("listen address: %s", listen)
+	// TODO: add error handling (e.g. invalid listen address)
+	go http.ListenAndServe(listen, &API{})
 
 	//input := caddy.CaddyfileInput{Contents: []byte(c.Val()), Filepath: "trapi generated", ServerTypeName: "http"}
 	//_, err := caddy.Start(input)
-	if err != nil {
-		return plugin.Error("trapi", c.Errf("failed starting http server for trapi %s", err))
-	}
+	//if err != nil {
+	//	return plugin.Error("trapi", c.Errf("failed starting http server for trapi %s", err))
+	//}
 
 	if c.NextArg() {
 		// no further arguments are expected
@@ -67,31 +71,40 @@ func setup(c *caddy.Controller) error {
 	return nil
 }
 
-func serveAPI(w http.ResponseWriter, r *http.Request) {
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil || body == nil {
-		log.Warning("received invalid api request")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	log.Debugf("Received trapi API call %s", body)
+type API struct{}
 
-	rr, err := dns.NewRR(string(body))
-	if err != nil || rr == nil {
-		log.Warning("received invalid resource record in api request")
+func (f *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	log.Infof("Received trapi API call: %s", r)
+
+	// TODO: separate TTL key?
+	rrstr := r.FormValue("rr")
+	if rrstr == "" {
+		log.Warning("rr missing in api call")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	log.Debug("Creating new transient RR")
+
+	rr, err := dns.NewRR(rrstr)
+	if err != nil || rr == nil {
+		log.Warningf("received invalid rr in api call: %s", rrstr)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	log.Infof("Creating new transient RR for '%s'", rr.Header().Name)
+	created := time.Now()
+	trr := TransientResourceRecord{RR: rr, Created: created}
 
 	// lookup existing record(s)
 	trrs := transientResourceRecords[rr.Header().Name]
 	//rr = TransientResourceRecord{Name: rrh.Name, Class: rrh.Class, Rrtype: rrh.Rrtype, Ttl: rrh.Ttl }
 	if trrs == nil { // or add new list
-		trrs = make([]dns.RR, 1)
+		trrs = make([]TransientResourceRecord, 0)
 	}
-	// append new RR to list
-	trrs = append(trrs, rr)
+	// append new RR to list and overwrite list entry
+	transientResourceRecords[rr.Header().Name] = append(trrs, trr)
+
+	// debug print current list
+	log.Infof("transientResourceRecords: %s", transientResourceRecords)
 
 	// confirm to api client
 	w.WriteHeader(http.StatusCreated)
