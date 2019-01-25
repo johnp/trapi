@@ -2,24 +2,20 @@
 
 ## Name
 
-*trapi* - Transient resource record API (**Very much WIP**)
+*trapi* - Temporary resource record API (**WIP**)
 
 ## Description
 
-The trapi plugin allows adding transient resource records that are held in memory of the server 
-instance for a given amount of time.
+The trapi plugin allows adding temporary resource records that are held in memory of the server 
+instance for a given amount of time. It increases the serial number for every added record and
+after record expiry to make master-slave replication possible. It does not yet trigger a NOTIFY
+to any slaves.
+
+## Syntax
 
 ~~~ txt
-trapi
+trapi [LISTEN ADDRESS]
 ~~~
-
-## Metrics
-
-If monitoring is enabled (via the *prometheus* directive) the following metric is exported:
-
-* `coredns_trapi_request_count_answered{server}` - query count answered by the *trapi* plugin.
-
-The `server` label indicated which server handled the request, see the *metrics* plugin for details.
 
 ## Health
 
@@ -27,8 +23,9 @@ This plugin implements dynamic health checking. It will always return healthy th
 
 ## API
 
-The API is not yet specified and for now is just a POST with a request body parsable by github.com/miekg/dns:NewRR.
-
+The API is not stable yet and for now is just a POST with keys `origin` (required), `rr` (required) and `ttl`,
+where `rr` can be specified multiple times and must be a resource record string parsable by `github.com/miekg/dns:NewRR`.
+If `ttl` is not specified the `ttl` of the resource record is taken instead.
 
 ## Syntax
 
@@ -36,7 +33,7 @@ The API is not yet specified and for now is just a POST with a request body pars
 
 ## Examples
 
-In this configuration, we are able to insert transient resource records without authentication
+In this configuration, we are able to insert temporary resource records without authentication
 through the API, accessible via HTTP at 127.0.0.1:53080, and forward all other queries to 1.1.1.1.
 
 ``` corefile
@@ -45,3 +42,7 @@ through the API, accessible via HTTP at 127.0.0.1:53080, and forward all other q
   forward . 1.1.1.1
 }
 ```
+
+## Compilation
+
+The plugin should be above the `file` plugin and below the `dnssec` plugin in `plugin.cfg`.
