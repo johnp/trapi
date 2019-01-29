@@ -2,7 +2,7 @@ package trapi
 
 import (
 	"github.com/coredns/coredns/plugin"
-	"sync"
+	"github.com/coredns/coredns/request"
 	"testing"
 	"time"
 
@@ -14,43 +14,46 @@ import (
 )
 
 func TestResponseWriter(t *testing.T) {
-	// Create a new Trapi Plugin. Use the test.ErrorHandler as the next plugin.
-	TRRs := RWLockableTRRMap{sync.RWMutex{}, make(map[string][]TemporaryResourceRecord), []string{}}
-	x := Trapi{Next: test.ErrorHandler()}
-
 	// setup (a) static test record(s)
-	exampleOrgRR, err := dns.NewRR("example.org. 300 IN A 127.0.0.1")
-	if exampleOrgRR == nil || err != nil {
-		t.Fatalf("Failed creating static test RR: %v", err)
-	}
-	origin := plugin.Name(exampleOrgRR.Header().Name).Normalize()
+	origin := plugin.Name("example.org.").Normalize()
+	exampleOrgRR, _ := dns.NewRR("example.org. 3600 IN TXT injected")
 	exampleOrgMap := make([]TemporaryResourceRecord, 0)
-	exampleOrgMap = append(exampleOrgMap, TemporaryResourceRecord{RR: exampleOrgRR, Created: time.Now(), Ttl: 60})
+	exampleOrgMap = append(exampleOrgMap, TemporaryResourceRecord{RR: exampleOrgRR, Created: time.Now(), Ttl: 3600})
 	TRRs.Lock()
 	TRRs.internal[origin] = exampleOrgMap
 	TRRs.Names = append(TRRs.Names, origin)
 	TRRs.Unlock()
 
-	// TODO: add record(s) via trapi HTTP api and test their existence / serial numbers
-
 	ctx := context.TODO()
-	r := new(dns.Msg)
-	r.SetQuestion("example.org.", dns.TypeA)
+	req := new(dns.Msg)
+	req.SetQuestion("example.org.", dns.TypeA)
+
 	// Create a new Recorder that captures the result
 	rec := dnstest.NewRecorder(&test.ResponseWriter{})
-
+	// Create dummy state from request
+	state := request.Request{W: rec, Req: req, Context: ctx}
+	trrrw := TRRResponseWriter{rec, state}
+	// Create dummy response from downstream
+	response := new(dns.Msg)
+	response.SetReply(req)
+	response.Authoritative = true
+	downstreamAnswer, _ := dns.NewRR("example.org. 3600 IN TXT loremipsum")
+	response.Answer = append(response.Answer, downstreamAnswer)
 	// Call the plugin directly
-	_, _ = x.ServeDNS(ctx, rec, r)
+	_ = trrrw.WriteMsg(response)
 
-	// TODO: check the result(s)
-	if !rrInAnswer(exampleOrgRR, rec.Msg.Answer) {
-		t.Fatalf("rec.Msg (%s) and exampleOrgRR (%s) do not match!", rec.Msg.Answer, exampleOrgRR)
+	if !rrsetContains(downstreamAnswer, rec.Msg.Answer) {
+		t.Fatalf("downstreamAnswer (%s) not in rec.Msg (%s)!", downstreamAnswer, rec.Msg.Answer)
+	}
+
+	if !rrsetContains(exampleOrgRR, rec.Msg.Answer) {
+		t.Fatalf("exampleOrgRR (%s) not in rec.Msg (%s)!", exampleOrgRR, rec.Msg.Answer)
 	}
 }
 
-func rrInAnswer(rr dns.RR, list []dns.RR) bool {
-	for _, rrr := range list {
-		if rr == rrr {
+func rrsetContains(rr dns.RR, list []dns.RR) bool {
+	for _, lrr := range list {
+		if rr == lrr {
 			return true
 		}
 	}

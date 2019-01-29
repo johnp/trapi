@@ -1,3 +1,5 @@
+.idea/
+
 # https://github.com/github/gitignore/raw/master/Go.gitignore
 # Binaries for programs and plugins
 *.exe

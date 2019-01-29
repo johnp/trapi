@@ -11,8 +11,6 @@ type TRRResponseWriter struct {
 	state request.Request // needed to filter (again) on return-path
 }
 
-// TODO: figure out if/how to handle multiple question/answer/... sections
-
 // WriteMsg implements the dns.ResponseWriter interface.
 func (r *TRRResponseWriter) WriteMsg(res *dns.Msg) error {
 	state := r.state
@@ -37,43 +35,38 @@ func (r *TRRResponseWriter) WriteMsg(res *dns.Msg) error {
 	var toInject []dns.RR
 	var serialChangeCounter uint32 = 0
 	for _, trr := range trrs {
-		log.Infof("Filtering trr: %v", trr)
 		if !trr.Expired() { // if RR valid, increment serial by 1 and inject
-			log.Info("is not expired :)")
 			serialChangeCounter += 1
 			if trr.NameMatches(state) {
-				log.Info("matches filter =D")
-				toInject = append(toInject, trr)
+				toInject = append(toInject, trr.RR)
 			}
 		} else { // if RR expired, increment serial by 2 and don't inject
-			log.Info("is expired :(")
 			serialChangeCounter += 2
 		}
 	}
 	TRRs.RUnlock()
 
+
 	// add the serial increment to the response serial
 	incrementSerial(res.Answer, serialChangeCounter)
 
-	log.Infof("Intercepting %s response...", state.Type())
 	// inject only QType/Name filtered/matching TRRs
 	switch state.QType() {
+	case dns.TypeSOA: // do nothing (serial already incremented)
 	case dns.TypeA:
+		fallthrough
 	case dns.TypeAAAA:
+		fallthrough
 	case dns.TypeTXT:
 		res.Answer = injectTRRs(res.Answer, toInject, false)
-		break
-	case dns.TypeSOA:
-		break // do nothing
-	case dns.TypeIXFR: // TODO: handle IXFR correctly (upstream doesn't emit IXFR responses yet)
+	case dns.TypeIXFR:
+		// TODO: handle IXFR (upstream doesn't emit IXFR responses (yet?))
+		fallthrough
 	case dns.TypeAXFR:
 		res.Answer = injectTRRs(res.Answer, toInject, true)
-		break
 	default:
 		// we don't support any other query types
-		log.Warning("Unsupported response type")
 	}
-
 	return r.ResponseWriter.WriteMsg(res)
 }
 
@@ -89,7 +82,7 @@ func injectTRRs(answer []dns.RR, inject []dns.RR, isXFR bool) []dns.RR {
 		if insertIdx == 0 { // edge case: empty zone and no end SOA
 			insertIdx = 1 // need to preserve the initial SOA
 		} else {
-			endSOA = answer[len(answer)-1]
+			endSOA = answer[insertIdx]
 		}
 	}
 
@@ -99,20 +92,17 @@ func injectTRRs(answer []dns.RR, inject []dns.RR, isXFR bool) []dns.RR {
 	if endSOA != nil {
 		answer = append(answer, endSOA)
 	}
-
 	return answer
 }
 
 func incrementSerial(in []dns.RR, amount uint32) {
 	var targetSerial uint32 = 0
 	for i, r := range in {
-		switch r.Header().Rrtype {
-		case dns.TypeSOA:
+		if r.Header().Rrtype == dns.TypeSOA {
 			// makes a copy of the RR because otherwise we end up modifying the underlying
 			// backend's in-memory representation (e.g. of the file backend) and count up
-			// again and again. Note that the file backend reloads every 5s by default, which
-			// would lead to very strange errors here if we'd continuously increment that
-			// very short living in-memory representation
+			// again and again. Note that the file backend reloads every 1s/5s by default,
+			// which would in combination lead to frequent resets to a lower serial number.
 			copied := dns.Copy(r)
 			s, _ := copied.(*dns.SOA)
 			if targetSerial == 0 {

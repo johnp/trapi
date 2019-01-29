@@ -9,18 +9,18 @@ import (
 )
 
 // TODO: maybe make API json
-// TODO: improve security (HTTPS/caddy?)
 // TODO: define what happens to collisions (shadow, append, not allowed?; currently always appends)
 // TODO: maybe add permission system (allows TypeA/AAA/TXT right now)
+// TODO: add tests
 type API struct {
 	Token string
 }
 
 func (f *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(2048); err != nil {
 		log.Error("Received invalid API call.")
 	} else {
-		log.Infof("Received API call from %s", r.UserAgent())
+		log.Debugf("Received API call from %s", r.UserAgent())
 	}
 
 	if r.PostFormValue("token") != f.Token {
@@ -45,6 +45,7 @@ func (f *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var trrs []TemporaryResourceRecord
+	var maxTtl = ttl
 	for key, values := range r.PostForm {
 		if len(values) == 0 {
 			continue
@@ -64,10 +65,15 @@ func (f *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					trr = TemporaryResourceRecord{RR: rr, Created: now, Ttl: ttl}
 				} else {
 					trr = TemporaryResourceRecord{RR: rr, Created: now, Ttl: rr.Header().Ttl}
+					if rr.Header().Ttl > maxTtl {
+						maxTtl = rr.Header().Ttl
+					}
 				}
 				trrs = append(trrs, trr)
 			}
-			break
+		case "token": // already handled
+		case "origin": // already handled
+		case "ttl": // already handled
 		default:
 			log.Warningf("Received unknown POST data: %s => %v", key, values)
 		}
@@ -91,17 +97,11 @@ func (f *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// confirm to api client
 	w.WriteHeader(http.StatusCreated)
 
-	TRRs.RLock()
-	for _, trrs := range TRRs.internal[origin] {
-		log.Infof("RR: %+v", trrs.String())
-		log.Infof("Created: %s", trrs.Created)
-		log.Infof("Ttl: %v", trrs.Ttl)
-	}
-	TRRs.RUnlock()
+	// trigger NOTIFY to slaves
+	asyncNotify(origin)
 
-	// TODO: trigger NOTIFY to slaves
-	// Options:
-	//  (1) somehow call the file plugins notify function
-	//  (2) require a "transfer to" config option for trapi
-	//  (3) ?
+	// schedule expiry NOTIFY after maxTtl + 1 minute
+	_ = time.AfterFunc(time.Duration(time.Second*time.Duration(maxTtl)+time.Minute), func() {
+		asyncNotify(origin)
+	})
 }

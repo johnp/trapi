@@ -4,7 +4,6 @@ package trapi
 import (
 	"context"
 	"github.com/coredns/coredns/plugin"
-	"github.com/coredns/coredns/plugin/file"
 	"github.com/coredns/coredns/request"
 	"github.com/miekg/dns"
 	"sync"
@@ -15,17 +14,18 @@ type Trapi struct {
 	Next plugin.Handler
 }
 
-// TODO: maybe use the same struct layout (and types, e.g. `Zone`) as the file plugin
 type RWLockableTRRMap struct {
 	sync.RWMutex
+	// structure similar to the `file` plugin
 	internal map[string][]TemporaryResourceRecord // A map mapping zone (origin) to the the zones TRRs
-	Names    []string                             // // All the keys from the map Z as a string slice.
+	Names    []string                             // All the keys from the map Z as a string slice.
 }
 
-type TemporaryZone struct {
-	file.Zone
-	Created time.Time
-}
+// TODO: maybe use the file plugins Zone type as well
+//type TemporaryZone struct {
+//	file.Zone
+//	Created time.Time
+//}
 
 type TemporaryResourceRecord struct {
 	dns.RR
@@ -41,8 +41,8 @@ func (t Trapi) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (
 	TRRs.RLock()
 	exists := plugin.Zones(TRRs.Names).Matches(qname) != ""
 	TRRs.RUnlock()
-	log.Infof("@trapi.ServeDNS(%v): type: %s qname: %s r: %s", exists, state.Type(), qname, r.String())
-	if exists { // TODO(performance): filter by Message OpCode/QType here as well already
+	log.Debugf("@trapi.ServeDNS(): exists: %v qname: %s qtype: %s", exists, qname, state.Type())
+	if exists { // TODO(enhancement): filter by Message OpCode/QType here as well already
 		w = &TRRResponseWriter{w, state}
 	}
 	return plugin.NextOrFailure(t.Name(), t.Next, ctx, w, r)
