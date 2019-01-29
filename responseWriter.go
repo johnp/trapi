@@ -46,9 +46,10 @@ func (r *TRRResponseWriter) WriteMsg(res *dns.Msg) error {
 	}
 	TRRs.RUnlock()
 
-
-	// add the serial increment to the response serial
+	// add the serial increment to the response section(s)
 	incrementSerial(res.Answer, serialChangeCounter)
+	incrementSerial(res.Ns, serialChangeCounter)
+	incrementSerial(res.Extra, serialChangeCounter)
 
 	// inject only QType/Name filtered/matching TRRs
 	switch state.QType() {
