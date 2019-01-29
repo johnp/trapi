@@ -1,22 +1,28 @@
-# trapi (WIP)
+# trapi
 
 ## Name
 
-*trapi* - Temporary resource record API (**WIP**)
+*trapi* - Temporary resource record API (WIP)
 
 ## Description
 
 The trapi plugin allows adding temporary resource records that are held in memory of the server 
-instance for a given amount of time. It increases the serial number for every added record, as well as 
-after record expiry to make zone transfer possible. Slaves are notified on every API call, but not 
-yet on record expiry. 
+instance for a given amount of time. Temporary resource records (TRRs) are served on top of the 
+underlying backend-plugin (e.g. file or kubernetes). It increases the serial number for every added 
+added record, as well as after record expiry to make zone transfer possible. Slaves are notified 
+on every API call and shortly after TRR expiry 
 
 ## Syntax
 
 ~~~ txt
-trapi [LISTEN ADDRESS]
+trapi LISTEN_ADDRESS {
+  token API_TOKEN
+  certFile [SSL_CERTIFICATE_FILE]
+  keyFile [SSL_KEY_FILE]
+}
 ~~~
-[TODO] detailing syntax and supported directives.
+
+Parameters in `[]` are optional.
 
 ## Health
 
