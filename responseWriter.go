@@ -46,12 +46,11 @@ func (r *TRRResponseWriter) WriteMsg(res *dns.Msg) error {
 	}
 	TRRs.RUnlock()
 
-	// add the serial increment to the response section(s)
+	// add the serial number increment to the response
+	// (SOA should only ever be in the Answer section)
 	incrementSerial(res.Answer, serialChangeCounter)
-	incrementSerial(res.Ns, serialChangeCounter)
-	incrementSerial(res.Extra, serialChangeCounter)
 
-	// inject only QType/Name filtered/matching TRRs
+	// inject TRRs into correct section
 	switch state.QType() {
 	case dns.TypeSOA: // do nothing (serial already incremented)
 	case dns.TypeA:
