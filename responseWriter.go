@@ -50,6 +50,10 @@ func (r *TRRResponseWriter) WriteMsg(res *dns.Msg) error {
 	// (SOA should only ever be in the Answer section)
 	incrementSerial(res.Answer, serialChangeCounter)
 
+	if len(toInject) == 0 {
+		return r.ResponseWriter.WriteMsg(res)
+	}
+
 	// inject TRRs into correct section
 	switch state.QType() {
 	case dns.TypeSOA: // do nothing (serial already incremented)
@@ -64,6 +68,7 @@ func (r *TRRResponseWriter) WriteMsg(res *dns.Msg) error {
 		fallthrough
 	case dns.TypeAXFR:
 		res.Answer = injectTRRs(res.Answer, toInject, true)
+		log.Infof("Injected %v TRRs into outgoing transfer", len(toInject))
 	default:
 		// we don't support any other query types
 	}
