@@ -2,7 +2,7 @@
 
 ## Name
 
-*trapi* - Temporary resource record API (WIP)
+*trapi* - Temporary resource record API
 
 ## Description
 
@@ -30,7 +30,7 @@ This plugin implements dynamic health checking. It will always return healthy th
 
 ## API
 
-The API is not stable yet and for now is just a POST with keys `origin` (required), `rr` (required) and `ttl`,
+The API is just a simple POST request with keys `origin` (required), `rr` (required) and `ttl`,
 where `rr` can be specified multiple times and must be a resource record string parsable by `github.com/miekg/dns:NewRR`. 
 If `ttl` is not specified the `ttl` of the resource record is taken instead.
 
