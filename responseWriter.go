@@ -14,7 +14,7 @@ type TRRResponseWriter struct {
 // WriteMsg implements the dns.ResponseWriter interface.
 func (r *TRRResponseWriter) WriteMsg(res *dns.Msg) error {
 	state := r.state
-	log.Debugf("@TRRRW.WriteMsg: %s %s\n", state.Type(), state.Name())
+	log.Debugf("TRRRW.WriteMsg(): %s %s\n", state.Type(), state.Name())
 	if res.Rcode != dns.RcodeSuccess { // only intercept successful (i.e. existing) zones
 		return r.ResponseWriter.WriteMsg(res)
 	}
@@ -22,11 +22,13 @@ func (r *TRRResponseWriter) WriteMsg(res *dns.Msg) error {
 	TRRs.RLock()
 	zone := plugin.Zones(TRRs.Names).Matches(state.Name())
 	if zone == "" { // not found
+		log.Errorf("No zone found for %s", state.Name())
 		return r.ResponseWriter.WriteMsg(res)
 	}
 
 	trrs, ok := TRRs.internal[zone]
 	if !ok || trrs == nil {
+		log.Errorf("No TRRs found for %s", zone)
 		return r.ResponseWriter.WriteMsg(res)
 	}
 

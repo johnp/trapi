@@ -41,7 +41,7 @@ func (t Trapi) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (
 	TRRs.RLock()
 	exists := plugin.Zones(TRRs.Names).Matches(qname) != ""
 	TRRs.RUnlock()
-	log.Debugf("@trapi.ServeDNS(): exists: %v qname: %s qtype: %s", exists, qname, state.Type())
+	log.Debugf("ServeDNS(): exists: %v qname: %s qtype: %s", exists, qname, state.Type())
 	if exists { // TODO(enhancement): filter by Message OpCode/QType here as well already
 		w = &TRRResponseWriter{w, state}
 	}
@@ -62,5 +62,8 @@ func (trr TemporaryResourceRecord) Matches(state request.Request) bool {
 }
 
 func (trr TemporaryResourceRecord) NameMatches(state request.Request) bool {
-	return trr.Header().Name == state.Name()
+	isXFR := state.QType() == dns.TypeAXFR || state.QType() == dns.TypeIXFR
+	requestName := state.Name()
+	trrName := trr.Header().Name
+	return (!isXFR && requestName == trrName) || (isXFR && plugin.Name(requestName).Matches(trrName))
 }
